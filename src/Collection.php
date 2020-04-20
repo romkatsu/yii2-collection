@@ -5,17 +5,14 @@
  * @license http://www.yiiframework.com/license/
  */
 
-namespace yii\collection;
+namespace Yiisoft\Yii\Collection;
 
 use ArrayAccess;
 use Closure;
 use Countable;
-use Iterator;
-use yii\base\Component;
-use yii\base\InvalidCallException;
-use yii\base\InvalidArgumentException;
-use yii\data\Pagination;
-use yii\helpers\ArrayHelper;
+use IteratorAggregate;
+use Yiisoft\Arrays\ArrayHelper;
+use ArrayIterator;
 
 /**
  * Collection is a container for a set of items.
@@ -47,42 +44,47 @@ use yii\helpers\ArrayHelper;
  * @author Carsten Brandt <mail@cebe.cc>
  * @since 1.0
  */
-class Collection extends Component implements ArrayAccess, Iterator, Countable
+class Collection implements ArrayAccess, IteratorAggregate, Countable
 {
     /**
      * @var array data contained in this collection.
      */
-    private $_data;
-
+    private array $data;
 
     /**
      * Collection constructor.
      * @param array $data
-     * @param array $config
      */
-    public function __construct(array $data = [], $config = [])
+    public function __construct(array $data = [])
     {
-        $this->_data = $data;
-        parent::__construct($config);
+        $this->data = $data;
     }
 
     /**
      * @return array data contained in this collection.
      */
-    public function getData()
+    public function getData(): array
     {
-        return $this->_data;
+        return $this->data;
+    }
+
+    public function has($name): bool
+    {
+        return isset($this->data[$name]);
+    }
+
+    public function get($name)
+    {
+        return $this->data[$name];
     }
 
     /**
      * @return bool a value indicating whether the collection is empty.
      */
-    public function isEmpty()
+    public function isEmpty(): bool
     {
         return $this->count() === 0;
     }
-
-    // basic collection operations
 
     /**
      * Apply callback to all items in the collection.
@@ -91,7 +93,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @param callable $callable the callback function to apply. Signature: `function($model)`.
      * @return static a new collection with items returned from the callback.
      */
-    public function map($callable)
+    public function map(callable $callable): self
     {
         return new static(\array_map($callable, $this->getData()));
     }
@@ -106,7 +108,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @param callable $callable the callback function to apply. Signature: `function($model)`. Should return an array of items.
      * @return static a new collection with items returned from the callback.
      */
-    public function flatMap($callable)
+    public function flatMap(callable $callable): self
     {
         return $this->map($callable)->collapse();
     }
@@ -125,7 +127,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * The original collection will not be changed, a new collection with modified data is returned.
      * @return static a new collection containing the collapsed array result.
      */
-    public function collapse()
+    public function collapse(): self
     {
         return new static($this->reduce('\array_merge', []));
     }
@@ -138,7 +140,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Should return `true` to keep an item and return `false` to remove them.
      * @return static a new collection containing the filtered items.
      */
-    public function filter($callable)
+    public function filter(callable $callable): self
     {
         return new static(\array_filter($this->getData(), $callable, ARRAY_FILTER_USE_BOTH));
     }
@@ -160,11 +162,13 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * This will be passed to [[ArrayHelper::getValue()]].
      * @return mixed the calculated sum.
      */
-    public function sum($field = null)
+    public function sum($field = null): int
     {
-        return $this->reduce(function($carry, $model) use ($field) {
-            return $carry + ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
-        }, 0);
+        return $this->reduce(
+            static function ($carry, $model) use ($field) {
+                return $carry + ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
+            }
+        ) ?? 0;
     }
 
     /**
@@ -173,15 +177,17 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * This will be passed to [[ArrayHelper::getValue()]].
      * @return mixed the calculated maximum value. 0 if the collection is empty.
      */
-    public function max($field = null)
+    public function max($field = null): int
     {
-        return $this->reduce(function($carry, $model) use ($field) {
-            $value = ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
-            if ($carry === null) {
-                return $value;
+        return $this->reduce(
+            static function ($carry, $model) use ($field) {
+                $value = ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
+                if ($carry === null) {
+                    return $value;
+                }
+                return $value > $carry ? $value : $carry;
             }
-            return $value > $carry ? $value : $carry;
-        });
+        ) ?? 0;
     }
 
     /**
@@ -190,22 +196,25 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * This will be passed to [[ArrayHelper::getValue()]].
      * @return mixed the calculated minimum value. 0 if the collection is empty.
      */
-    public function min($field = null)
+    public function min($field = null): int
     {
-        return $this->reduce(function($carry, $model) use ($field) {
-            $value = ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
-            if ($carry === null) {
-                return $value;
+        return $this->reduce(
+            static function ($carry, $model) use ($field) {
+                $value = ($field === null ? $model : ArrayHelper::getValue($model, $field, 0));
+
+                if ($carry === null) {
+                    return $value;
+                }
+                return $value < $carry ? $value : $carry;
             }
-            return $value < $carry ? $value : $carry;
-        });
+        ) ?? 0;
     }
 
     /**
      * Count items in this collection.
      * @return int the count of items in this collection.
      */
-    public function count()
+    public function count(): int
     {
         return count($this->getData());
     }
@@ -225,7 +234,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @see http://php.net/manual/en/function.asort.php
      * @see http://php.net/manual/en/function.arsort.php
      */
-    public function sort($direction = SORT_ASC, $sortFlag = SORT_REGULAR)
+    public function sort(int $direction = SORT_ASC, int $sortFlag = SORT_REGULAR): self
     {
         $data = $this->getData();
         if ($direction === SORT_ASC) {
@@ -249,7 +258,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @see http://php.net/manual/en/function.ksort.php
      * @see http://php.net/manual/en/function.krsort.php
      */
-    public function sortByKey($direction = SORT_ASC, $sortFlag = SORT_REGULAR)
+    public function sortByKey(int $direction = SORT_ASC, int $sortFlag = SORT_REGULAR): self
     {
         $data = $this->getData();
         if ($direction === SORT_ASC) {
@@ -271,7 +280,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @see http://php.net/manual/en/function.natsort.php
      * @see http://php.net/manual/en/function.natcasesort.php
      */
-    public function sortNatural($caseSensitive = false)
+    public function sortNatural(bool $caseSensitive = false): Collection
     {
         $data = $this->getData();
         if ($caseSensitive) {
@@ -301,11 +310,10 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Please refer to the [PHP manual](http://php.net/manual/en/function.sort.php)
      * for more details. When sorting by multiple keys with different sort flags, use an array of sort flags.
      * @return static a new collection containing the sorted items.
-     * @throws InvalidArgumentException if the $direction or $sortFlag parameters do not have
      * correct number of elements as that of $key.
      * @see ArrayHelper::multisort()
      */
-    public function sortBy($key, $direction = SORT_ASC, $sortFlag = SORT_REGULAR)
+    public function sortBy($key, $direction = SORT_ASC, $sortFlag = SORT_REGULAR): self
     {
         $data = $this->getData();
         ArrayHelper::multisort($data, $key, $direction, $sortFlag);
@@ -318,7 +326,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * The original collection will not be changed, a new collection with items in reverse order is returned.
      * @return static a new collection containing the items in reverse order.
      */
-    public function reverse()
+    public function reverse(): self
     {
         return new static(\array_reverse($this->getData(), true));
     }
@@ -327,7 +335,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Return items without keys.
      * @return static a new collection containing the values of this collections data.
      */
-    public function values()
+    public function values(): self
     {
         return new static(\array_values($this->getData()));
     }
@@ -336,7 +344,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Return keys of all collection items.
      * @return static a new collection containing the keys of this collections data.
      */
-    public function keys()
+    public function keys(): self
     {
         return new static(\array_keys($this->getData()));
     }
@@ -345,28 +353,21 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Flip keys and values of all collection items.
      * @return static a new collection containing the data of this collections flipped by key and value.
      */
-    public function flip()
+    public function flip(): self
     {
         return new static(\array_flip($this->getData()));
     }
 
     /**
-     * Merge two collections or this collection with an array.
-     *
      * Data in this collection will be overwritten if non-integer keys exist in the merged collection.
      *
      * The original collection will not be changed, a new collection with items in reverse order is returned.
-     * @param array|Collection $collection the collection or array to merge with.
+     * @param Collection $collection the collection or array to merge with.
      * @return static a new collection containing the merged data.
      */
-    public function merge($collection)
+    public function merge(Collection $collection): self
     {
-        if ($collection instanceof Collection) {
-            return new static(\array_merge($this->getData(), $collection->getData()));
-        } elseif (\is_array($collection)) {
-            return new static(\array_merge($this->getData(), $collection));
-        }
-        throw new InvalidArgumentException('Collection can only be merged with an array or other collections.');
+        return new static(ArrayHelper::merge($this->getData(), $collection->getData()));
     }
 
     /**
@@ -383,23 +384,9 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @return static a new collection containing the mapped data.
      * @see ArrayHelper::map()
      */
-    public function remap($from, $to)
+    public function remap($from, $to): self
     {
         return new static(ArrayHelper::map($this->getData(), $from, $to));
-    }
-
-    /**
-     * Assign a new key to each item in the collection.
-     *
-     * The original collection will not be changed, a new collection with newly mapped data is returned.
-     * @param string|Closure $key the field of the item to use as the new key.
-     * This can be a closure that returns such a value.
-     * @return static a new collection containing the newly index data.
-     * @see ArrayHelper::map()
-     */
-    public function indexBy($key)
-    {
-        return $this->remap($key, function ($model) { return $model; });
     }
 
     /**
@@ -412,7 +399,7 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @return static a new collection containing the grouped data.
      * @see ArrayHelper::map()
      */
-    public function groupBy($groupField, $preserveKeys = true)
+    public function groupBy($groupField, bool $preserveKeys = true): self
     {
         $result = [];
         if ($preserveKeys) {
@@ -436,16 +423,16 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * Defaults to `false`.
      * @return bool `true` if the collection contains at least one item that matches, `false` if not.
      */
-    public function contains($item, $strict = false)
+    public function contains($item, bool $strict = false): bool
     {
         if ($item instanceof Closure) {
-            foreach($this->getData() as $i) {
+            foreach ($this->getData() as $i) {
                 if ($item($i)) {
                     return true;
                 }
             }
         } else {
-            foreach($this->getData() as $i) {
+            foreach ($this->getData() as $i) {
                 if ($strict ? $i === $item : $i == $item) {
                     return true;
                 }
@@ -466,14 +453,20 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @return static a new collection containing the filtered items.
      * @see filter()
      */
-    public function remove($item, $strict = false)
+    public function remove($item, $strict = false): Collection
     {
         if ($item instanceof Closure) {
-            $fun = function($i) use ($item) { return !$item($i); };
+            $fun = static function ($i) use ($item) {
+                return !$item($i);
+            };
         } elseif ($strict) {
-            $fun = function($i) use ($item) { return $i !== $item; };
+            $fun = static function ($i) use ($item) {
+                return $i !== $item;
+            };
         } else {
-            $fun = function($i) use ($item) { return $i != $item; };
+            $fun = static function ($i) use ($item) {
+                return $i != $item;
+            };
         }
         return $this->filter($fun);
     }
@@ -489,14 +482,16 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @return static a new collection containing the new set of items.
      * @see map()
      */
-    public function replace($item, $replacement, $strict = false)
+    public function replace($item, $replacement, bool $strict = false): self
     {
-        return $this->map(function($i) use ($item, $replacement, $strict) {
-            if ($strict ? $i === $item : $i == $item) {
-                return $replacement;
+        return $this->map(
+            static function ($i) use ($item, $replacement, $strict) {
+                if ($strict ? $i === $item : $i == $item) {
+                    return $replacement;
+                }
+                return $i;
             }
-            return $i;
-        });
+        );
     }
 
     /**
@@ -508,164 +503,34 @@ class Collection extends Component implements ArrayAccess, Iterator, Countable
      * @param bool $preserveKeys whether to preserve item keys.
      * @return static a new collection containing the new set of items.
      */
-    public function slice($offset, $limit = null, $preserveKeys = true)
+    public function slice(int $offset, int $limit = null, bool $preserveKeys = true): self
     {
         return new static(\array_slice($this->getData(), $offset, $limit, $preserveKeys));
     }
 
-    /**
-     * Apply Pagination to the collection.
-     *
-     * This will return a portion of the data that maps the the page calculated by the pagination object.
-     *
-     * Usage example:
-     *
-     * ```php
-     * $collection = new Collection($data);
-     * $pagination = new Pagination([
-     *     'totalCount' => $collection->count(),
-     *     'pageSize' => 3,
-     * ]);
-     * // the current page will be determined from request parameters
-     * $pageData = $collection->paginate($pagination)->getData());
-     * ```
-     *
-     * The original collection will not be changed, a new collection with the selected data is returned.
-     * @param Pagination $pagination the pagination object to retrieve page information from.
-     * @return static a new collection containing the items for the current page.
-     * @see Pagination
-     */
-    public function paginate(Pagination $pagination, $preserveKeys = false)
+    public function offsetExists($name): bool
     {
-        $limit = $pagination->getLimit();
-        return $this->slice($pagination->getOffset(), $limit > 0 ? $limit : null, $preserveKeys);
+        return $this->has($name);
     }
 
-    // ArrayAccess methods
-
-    /**
-     * Whether a offset exists
-     * @link http://php.net/manual/en/arrayaccess.offsetexists.php
-     * @param mixed $offset <p>
-     * An offset to check for.
-     * </p>
-     * @return bool true on success or false on failure.
-     * </p>
-     * <p>
-     * The return value will be casted to boolean if non-boolean was returned.
-     */
-    public function offsetExists($offset)
+    public function offsetGet($name)
     {
-        return isset($this->getData()[$offset]);
+        return $this->get($name);
     }
 
-    /**
-     * Offset to retrieve
-     * @link http://php.net/manual/en/arrayaccess.offsetget.php
-     * @param mixed $offset <p>
-     * The offset to retrieve.
-     * </p>
-     * @return mixed Can return all value types.
-     */
-    public function offsetGet($offset)
+
+    public function offsetSet($name, $value): void
     {
-        return $this->getData()[$offset];
+        $this->data[$name] = $value;
     }
 
-    /**
-     * Offset to set
-     * @link http://php.net/manual/en/arrayaccess.offsetset.php
-     * @param mixed $offset <p>
-     * The offset to assign the value to.
-     * </p>
-     * @param mixed $value <p>
-     * The value to set.
-     * </p>
-     * @return void
-     */
-    public function offsetSet($offset, $value)
+    public function offsetUnset($name): void
     {
-        throw new InvalidCallException('Collection is readonly.');
+        $this->remove($name);
     }
 
-    /**
-     * Offset to unset
-     * @link http://php.net/manual/en/arrayaccess.offsetunset.php
-     * @param mixed $offset <p>
-     * The offset to unset.
-     * </p>
-     * @return void
-     */
-    public function offsetUnset($offset)
+    public function getIterator()
     {
-        throw new InvalidCallException('Collection is readonly.');
-    }
-
-    // Iterator methods
-
-    private $_iteratorData;
-
-    /**
-     * Return the current element
-     * @link http://php.net/manual/en/iterator.current.php
-     * @return mixed Can return any type.
-     */
-    public function current()
-    {
-        if ($this->_iteratorData === null) {
-            $this->_iteratorData = $this->getData();
-        }
-        return \current($this->_iteratorData);
-    }
-
-    /**
-     * Move forward to next element
-     * @link http://php.net/manual/en/iterator.next.php
-     * @return void Any returned value is ignored.
-     */
-    public function next()
-    {
-        if ($this->_iteratorData === null) {
-            $this->_iteratorData = $this->getData();
-        }
-        \next($this->_iteratorData);
-    }
-
-    /**
-     * Return the key of the current element
-     * @link http://php.net/manual/en/iterator.key.php
-     * @return mixed scalar on success, or null on failure.
-     */
-    public function key()
-    {
-        if ($this->_iteratorData === null) {
-            $this->_iteratorData = $this->getData();
-        }
-        return \key($this->_iteratorData);
-    }
-
-    /**
-     * Checks if current position is valid
-     * @link http://php.net/manual/en/iterator.valid.php
-     * @return bool The return value will be casted to boolean and then evaluated.
-     * Returns true on success or false on failure.
-     */
-    public function valid()
-    {
-        if ($this->_iteratorData === null) {
-            $this->_iteratorData = $this->getData();
-        }
-        return \current($this->_iteratorData) !== false;
-    }
-
-    /**
-     * Rewind the Iterator to the first element
-     * @link http://php.net/manual/en/iterator.rewind.php
-     * @return void Any returned value is ignored.
-     */
-    public function rewind()
-    {
-        $this->_iteratorData = $this->getData();
-        \reset($this->_iteratorData);
+        return new ArrayIterator($this->data);
     }
 }
